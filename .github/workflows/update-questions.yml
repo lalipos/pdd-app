@@ -19,22 +19,25 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Run sync
-        id: sync
+      - name: Install dependencies
+        run: pip install beautifulsoup4
+
+      - name: Run scraper
+        id: scrape
         run: |
-          python scraper/sync.py
+          python scraper/scrape_drom.py
           echo "exit_code=$?" >> $GITHUB_OUTPUT
         continue-on-error: true
 
       - name: Commit and push if changed
-        if: steps.sync.outputs.exit_code == '0'
+        if: steps.scrape.outputs.exit_code == '0'
         run: |
           git config user.name "pdd-sync[bot]"
           git config user.email "pdd-sync@users.noreply.github.com"
           git add data/
-          git commit -m "chore: sync questions from etspring $(date -u +%Y-%m-%d)"
+          git commit -m "chore: sync questions from drom.ru $(date -u +%Y-%m-%d)"
           git push
 
       - name: No changes
-        if: steps.sync.outputs.exit_code == '1'
+        if: steps.scrape.outputs.exit_code == '1'
         run: echo "No question changes detected, skipping commit."
