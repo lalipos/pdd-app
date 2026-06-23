@@ -108,6 +108,7 @@ export function getLengthMarker(answers: Answer[]): LengthMarker {
 
 export function getImageUrl(imagePath: string, category: 'AB' | 'CD'): string | null {
   if (!imagePath || imagePath.includes('no_image')) return null;
+  if (imagePath.startsWith('http')) return imagePath;
   const catPath = category === 'AB' ? 'A_B' : 'C_D';
   const match = imagePath.match(/([a-f0-9]{32}\.jpg)$/i);
   if (!match) return null;
