@@ -25,7 +25,7 @@ def fetch_json(url: str) -> object:
 def question_fingerprint(q: dict) -> tuple:
     """Tuple of fields that matter for hint validity."""
     answers = tuple((a["answer_text"], a["is_correct"]) for a in q["answers"])
-    return (q["question"], answers, q.get("answer_tip", ""))
+    return (q["question"], answers, q.get("answer_tip", ""), q.get("image", ""))
 
 
 def main() -> bool:

@@ -1,11 +1,18 @@
 {
-  "version": 1,
-  "updated_at": "2026-06-23T07:54:21Z",
+  "version": 2,
+  "updated_at": "2026-06-23T08:30:37Z",
   "source": "etspring/pdd_russia",
-  "needs_review": [],
+  "needs_review": [
+    "0a823ee8d2f1e7ac8bd04dbb74613f56",
+    "3e06d2a0e8d3bec2d10a29e249c73256",
+    "41063f3865301d9f6cd2820815c39c27",
+    "4592e88d8a790b0e263fd0147c41f755",
+    "b32be09010a971020875628765f8c545",
+    "f7dbf4159e9b8f75e64f6394347edfb3"
+  ],
   "stats": {
     "total": 800,
-    "changed": 0,
-    "added": 0
+    "changed": 5,
+    "added": 1
   }
 }
