@@ -101,9 +101,9 @@ def parse_question(html: str, ticket: int, question: int) -> dict:
 
 
 def question_fingerprint(q: dict) -> tuple:
-    """Only fields that invalidate a hint: question wording + answer options."""
+    """Fields that invalidate a hint: question wording, image, and answer options."""
     answers = tuple((a["answer_text"], a["is_correct"]) for a in q["answers"])
-    return (q["question"], answers)
+    return (q["question"], q.get("image", ""), answers)
 
 
 def main() -> bool:
