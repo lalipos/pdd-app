@@ -1,10 +1,10 @@
 {
-  "version": 6,
+  "version": 7,
   "updated_at": "2026-06-23T12:08:09Z",
   "source": "drom.ru",
   "needs_review": [],
   "stats": {
-    "total": 791,
+    "total": 800,
     "changed": 0,
     "added": 0
   }

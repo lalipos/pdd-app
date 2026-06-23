@@ -8,7 +8,6 @@ so existing hints remain valid.
 
 Exit 0 = changes found (GitHub Action commits), 1 = no changes.
 """
-import hashlib
 import json
 import sys
 import time
@@ -39,8 +38,11 @@ def fetch_html(url: str) -> str:
         return r.read().decode(charset, errors="replace")
 
 
-def make_id(question_text: str) -> str:
-    return hashlib.md5(question_text.strip().encode("utf-8")).hexdigest()
+def make_id(ticket: int, question: int) -> str:
+    """Positional id: B{ticket}Q{question}. Unique and stable across sources.
+    NOT based on text — many questions share identical wording (different
+    picture/answers), which would collide and cross-wire hints."""
+    return f"B{ticket}Q{question}"
 
 
 def parse_question(html: str, ticket: int, question: int) -> dict:
@@ -84,7 +86,7 @@ def parse_question(html: str, ticket: int, question: int) -> dict:
             correct_answer = lines[0]  # e.g. "Правильный ответ: 2"
             answer_tip = "\n".join(lines[1:])
 
-    qid = make_id(question_text)
+    qid = make_id(ticket, question)
 
     return {
         "id": qid,
@@ -148,19 +150,8 @@ def main() -> bool:
         print(f"Too many errors ({errors}), aborting.", file=sys.stderr)
         sys.exit(2)
 
-    # Build text-based lookup for existing questions to survive ID changes
-    # (etspring and drom.ru may compute different IDs for same question text)
-    current_by_text = {
-        q["question"].strip(): q["id"]
-        for q in current_questions
-    }
-
-    # Re-assign IDs: if question text matches existing → keep old ID (hints survive)
-    for q in new_questions:
-        old_id = current_by_text.get(q["question"].strip())
-        if old_id:
-            q["id"] = old_id
-
+    # IDs are positional (B{ticket}Q{question}) — stable across sources, no
+    # text-matching needed. The fingerprint below detects content changes.
     new_by_id = {q["id"]: q for q in new_questions}
 
     needs_review: set = set(meta.get("needs_review", []))
