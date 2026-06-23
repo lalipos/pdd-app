@@ -3,16 +3,22 @@
 Scrapes PDD questions from drom.ru (mirrors official ГИБДД question bank).
 Outputs data/questions_ab.json and updates data/meta.json.
 
-ID = MD5(question_text) — stable across re-scrapes if text unchanged,
-so existing hints remain valid.
+Question id is positional: B{ticket}Q{question} — unique and stable across
+sources, so hints (keyed by the same id) stay attached to the right question.
 
-Exit 0 = changes found (GitHub Action commits), 1 = no changes.
+Resilience:
+- If a question fails to scrape (timeout) or comes back malformed, the
+  PREVIOUS good version is kept instead of dropping it — no data loss.
+- Before writing, the whole set is validated; if it looks broken (too few
+  questions, too many malformed), the script aborts WITHOUT writing so the
+  daily workflow never commits garbage.
+
+Exit codes: 0 = changes found (workflow commits), 1 = no changes, 2 = aborted.
 """
 import json
 import sys
 import time
 import urllib.request
-import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +35,11 @@ HEADERS = {
     "Accept-Language": "ru-RU,ru;q=0.9",
 }
 REQUEST_DELAY = 0.5  # seconds between requests
+
+# Validation guards — protect against drom.ru layout changes / mass failures
+EXPECTED_TOTAL = NUM_TICKETS * QUESTIONS_PER_TICKET  # 800
+MIN_QUESTIONS = 790            # abort if fewer survive
+MAX_MALFORMED = 5              # abort if more than this look broken
 
 
 def fetch_html(url: str) -> str:
@@ -117,6 +128,16 @@ def question_fingerprint(q: dict) -> tuple:
     return (q["question"], image_id(q.get("image", "")), answers)
 
 
+def is_valid_question(q: dict) -> bool:
+    """A question is usable only if it has text, ≥2 answers, and a correct one.
+    Catches drom.ru returning a page that loads but parses to empty fields."""
+    return bool(
+        q.get("question", "").strip()
+        and len(q.get("answers", [])) >= 2
+        and any(a.get("is_correct") for a in q["answers"])
+    )
+
+
 def main() -> bool:
     print("Loading current data...")
     with open(DATA / "questions_ab.json", encoding="utf-8") as f:
@@ -130,24 +151,45 @@ def main() -> bool:
     print(f"Scraping {NUM_TICKETS} tickets x {QUESTIONS_PER_TICKET} questions from drom.ru...")
     new_questions: list = []
     errors = 0
+    kept_previous = 0
 
     for n in range(1, NUM_TICKETS + 1):
         ticket_qs = []
         for q in range(1, QUESTIONS_PER_TICKET + 1):
             url = BASE_URL.format(n=n, q=q)
+            qid = make_id(n, q)
             try:
                 html = fetch_html(url)
                 parsed = parse_question(html, n, q)
+                if not is_valid_question(parsed):
+                    raise ValueError("parsed question is malformed (empty/no answers/no correct)")
                 ticket_qs.append(parsed)
                 time.sleep(REQUEST_DELAY)
             except Exception as e:
-                print(f"  ERROR Б{n}В{q}: {e}", file=sys.stderr)
                 errors += 1
+                # Don't drop the question — keep its previous good version if we have one
+                previous = current_by_id.get(qid)
+                if previous and is_valid_question(previous):
+                    ticket_qs.append(previous)
+                    kept_previous += 1
+                    print(f"  WARN Б{n}В{q}: {e} — kept previous version", file=sys.stderr)
+                else:
+                    print(f"  ERROR Б{n}В{q}: {e} — NO previous version to fall back on", file=sys.stderr)
         new_questions.extend(ticket_qs)
         print(f"  Билет {n:02d}: {len(ticket_qs)} вопросов", flush=True)
 
-    if errors > 10:
-        print(f"Too many errors ({errors}), aborting.", file=sys.stderr)
+    # --- Validation guard: never write/commit a broken dataset ---
+    malformed = [q["id"] for q in new_questions if not is_valid_question(q)]
+    abort_reasons = []
+    if len(new_questions) < MIN_QUESTIONS:
+        abort_reasons.append(f"only {len(new_questions)} questions (< {MIN_QUESTIONS})")
+    if len(malformed) > MAX_MALFORMED:
+        abort_reasons.append(f"{len(malformed)} malformed questions (> {MAX_MALFORMED})")
+    if abort_reasons:
+        print("ABORT — dataset failed validation, not writing:", file=sys.stderr)
+        for r in abort_reasons:
+            print(f"  - {r}", file=sys.stderr)
+        print(f"  (scrape errors: {errors}, kept previous: {kept_previous})", file=sys.stderr)
         sys.exit(2)
 
     # IDs are positional (B{ticket}Q{question}) — stable across sources, no
@@ -182,6 +224,7 @@ def main() -> bool:
         "changed": len(changed),
         "added": len(added),
         "errors": errors,
+        "kept_previous": kept_previous,
     }
 
     with open(DATA / "meta.json", "w", encoding="utf-8") as f:
@@ -191,7 +234,7 @@ def main() -> bool:
     print(f"  Total:   {len(new_questions)}")
     print(f"  Changed: {len(changed)}")
     print(f"  Added:   {len(added)}")
-    print(f"  Errors:  {errors}")
+    print(f"  Errors:  {errors} (kept previous version: {kept_previous})")
     print(f"  Needs review: {len(needs_review)}")
 
     return has_changes
