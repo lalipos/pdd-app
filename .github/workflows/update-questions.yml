@@ -20,7 +20,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install beautifulsoup4
+        run: pip install beautifulsoup4 Pillow
 
       - name: Run scraper
         id: scrape
@@ -28,6 +28,10 @@ jobs:
           python scraper/scrape_drom.py
           echo "exit_code=$?" >> $GITHUB_OUTPUT
         continue-on-error: true
+
+      - name: Re-host new images on GitHub
+        if: steps.scrape.outputs.exit_code == '0'
+        run: python scraper/download_images.py
 
       - name: Commit and push if changed
         if: steps.scrape.outputs.exit_code == '0'

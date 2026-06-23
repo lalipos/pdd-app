@@ -100,10 +100,19 @@ def parse_question(html: str, ticket: int, question: int) -> dict:
     }
 
 
+def image_id(url: str) -> str:
+    """Filename without extension: '1542608213' from both the drom.ru URL and the
+    re-hosted GitHub raw URL. Lets fingerprints survive re-hosting while still
+    detecting a genuinely new picture (drom assigns a new file id)."""
+    if not url:
+        return ""
+    return url.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+
+
 def question_fingerprint(q: dict) -> tuple:
     """Fields that invalidate a hint: question wording, image, and answer options."""
     answers = tuple((a["answer_text"], a["is_correct"]) for a in q["answers"])
-    return (q["question"], q.get("image", ""), answers)
+    return (q["question"], image_id(q.get("image", "")), answers)
 
 
 def main() -> bool:
