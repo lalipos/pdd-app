@@ -39,6 +39,9 @@ yarn-error.*
 # рабочая кухня (черновики, картинки-исходники, планы, review)
 tmp/
 
+# scraper — kept locally only, not published
+scraper/
+
 # generated native folders
 /ios
 /android
