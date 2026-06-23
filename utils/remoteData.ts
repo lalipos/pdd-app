@@ -13,6 +13,11 @@ interface RemoteMeta {
   needs_review: string[];
 }
 
+export interface UpdateResult {
+  questions: Question[];
+  hints: Record<string, string>;
+}
+
 async function fetchJSON(url: string): Promise<unknown> {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -24,12 +29,16 @@ async function getCachedVersion(): Promise<number> {
   return v ? parseInt(v, 10) : 0;
 }
 
-/** Downloads fresh data if remote version is newer. Returns true if updated. */
-export async function checkAndUpdate(): Promise<boolean> {
+/**
+ * Downloads fresh data if remote version is newer.
+ * Returns new data immediately so the app can apply it without restarting.
+ * Returns null if already up to date or on error.
+ */
+export async function checkAndUpdate(): Promise<UpdateResult | null> {
   try {
     const meta = (await fetchJSON(`${REPO}/meta.json`)) as RemoteMeta;
     const cached = await getCachedVersion();
-    if (meta.version <= cached) return false;
+    if (meta.version <= cached) return null;
 
     const [questions, hints] = await Promise.all([
       fetchJSON(`${REPO}/questions_ab.json`),
@@ -42,10 +51,12 @@ export async function checkAndUpdate(): Promise<boolean> {
       [KEY_HINTS_AB, JSON.stringify(hints)],
     ]);
 
-    return true;
+    return {
+      questions: questions as Question[],
+      hints: hints as Record<string, string>,
+    };
   } catch {
-    // Offline or error — silently keep existing data
-    return false;
+    return null;
   }
 }
 

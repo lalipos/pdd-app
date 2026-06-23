@@ -45,8 +45,12 @@ export default function App() {
 
       setReady(true);
 
-      // Background: check for updates from GitHub, apply on next launch
-      checkAndUpdate().catch(() => {});
+      // Background: check for updates, apply immediately if newer version found
+      checkAndUpdate().then(update => {
+        if (!update) return;
+        setQuestionsAB(update.questions);
+        setHintsOverride(update.hints);
+      }).catch(() => {});
     }
 
     init();
