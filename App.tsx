@@ -5,6 +5,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Category, Screen, Question } from './types';
 import { getSavedCategory, saveCategory, getStats } from './utils/storage';
 import { getDueCount } from './utils/srs';
+import { checkAndUpdate, getCachedQuestions, getCachedHints } from './utils/remoteData';
+import { setHintsOverride } from './utils/hints';
 
 import CategorySelect from './screens/CategorySelect';
 import Home from './screens/Home';
@@ -12,7 +14,7 @@ import TicketList from './screens/TicketList';
 import Session from './screens/Session';
 import Stats from './screens/Stats';
 
-const questionsAB: Question[] = require('./assets/questions_ab.json');
+const questionsABBundled: Question[] = require('./assets/questions_ab.json');
 const questionsCD: Question[] = require('./assets/questions_cd.json');
 
 export default function App() {
@@ -21,26 +23,43 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'category' });
   const [statsPercent, setStatsPercent] = useState(0);
   const [dueCount, setDueCount] = useState(0);
+  const [questionsAB, setQuestionsAB] = useState<Question[]>(questionsABBundled);
 
   useEffect(() => {
-    getSavedCategory().then(cat => {
-      if (cat) {
-        setCategory(cat);
+    async function init() {
+      // Load cached questions/hints from AsyncStorage (fast, local)
+      const [cachedQs, cachedHints, savedCat] = await Promise.all([
+        getCachedQuestions(),
+        getCachedHints(),
+        getSavedCategory(),
+      ]);
+
+      if (cachedQs) setQuestionsAB(cachedQs);
+      if (cachedHints) setHintsOverride(cachedHints);
+
+      if (savedCat) {
+        setCategory(savedCat);
         setScreen({ name: 'home' });
-        loadPercent(cat);
+        loadPercent(savedCat, cachedQs ?? questionsABBundled);
       }
+
       setReady(true);
-    });
+
+      // Background: check for updates from GitHub, apply on next launch
+      checkAndUpdate().catch(() => {});
+    }
+
+    init();
   }, []);
 
-  const loadPercent = async (cat: Category) => {
+  const loadPercent = async (cat: Category, qs?: Question[]) => {
     const s = await getStats(cat);
     const p = s.totalAnswered > 0
       ? Math.round((s.totalCorrect / s.totalAnswered) * 100)
       : 0;
     setStatsPercent(p);
-    const qs = cat === 'AB' ? questionsAB : questionsCD;
-    setDueCount(await getDueCount(cat, qs));
+    const questions = cat === 'AB' ? (qs ?? questionsAB) : questionsCD;
+    setDueCount(await getDueCount(cat, questions));
   };
 
   const handleSelectCategory = async (cat: Category) => {

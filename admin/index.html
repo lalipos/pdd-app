@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDD Admin — Правка хинтов</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+<!-- LOGIN -->
+<div id="login-view" class="flex items-center justify-center min-h-screen">
+  <div class="bg-white rounded-2xl shadow p-8 w-full max-w-sm">
+    <h1 class="text-xl font-bold mb-1">PDD Admin</h1>
+    <p class="text-gray-500 text-sm mb-6">Введи GitHub Personal Access Token<br>(нужен scope: <code>repo</code>)</p>
+    <input id="pat-input" type="password" placeholder="ghp_..." class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-black" />
+    <button onclick="login()" class="w-full bg-black text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-800">Войти</button>
+    <p id="login-error" class="text-red-500 text-sm mt-2 hidden"></p>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard-view" class="hidden max-w-3xl mx-auto px-4 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-xl font-bold">PDD Admin</h1>
+      <p id="sync-info" class="text-gray-500 text-sm"></p>
+    </div>
+    <button onclick="logout()" class="text-sm text-gray-400 hover:text-gray-700">Выйти</button>
+  </div>
+
+  <div id="all-ok" class="hidden bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+    <div class="text-2xl mb-2">✅</div>
+    <p class="font-medium text-green-800">Все хинты актуальны</p>
+    <p class="text-sm text-green-600 mt-1">Новых изменённых вопросов нет</p>
+  </div>
+
+  <div id="question-list"></div>
+</div>
+
+<!-- EDIT MODAL -->
+<div id="modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
+    <div class="flex items-start justify-between mb-4">
+      <h2 class="font-bold text-lg">Правка хинта</h2>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-black text-xl leading-none">✕</button>
+    </div>
+
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Вопрос</p>
+      <p id="modal-question" class="text-sm text-gray-800"></p>
+    </div>
+
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Варианты ответов</p>
+      <div id="modal-answers" class="text-sm space-y-1"></div>
+    </div>
+
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Официальное пояснение (answer_tip)</p>
+      <p id="modal-tip" class="text-sm text-gray-600 bg-gray-50 rounded-lg p-3"></p>
+    </div>
+
+    <div class="mb-5">
+      <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Хинт (редактировать)</p>
+      <textarea id="modal-hint" rows="5" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black resize-none"></textarea>
+    </div>
+
+    <div class="flex gap-2">
+      <button onclick="saveHint()" id="save-btn" class="flex-1 bg-black text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-800">Сохранить</button>
+      <button onclick="markOk()" class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-medium hover:bg-gray-50">Оставить как есть</button>
+    </div>
+    <p id="save-error" class="text-red-500 text-sm mt-2 hidden"></p>
+  </div>
+</div>
+
+<script>
+const REPO = 'lalipos/pdd-app';
+const BRANCH = 'main';
+const BASE = 'https://api.github.com';
+const RAW = 'https://raw.githubusercontent.com/lalipos/pdd-app/main/data';
+
+let pat = '';
+let meta = null;
+let questions = [];   // full array
+let hints = {};       // id -> hint text
+let hintsFileSha = '';
+let metaFileSha = '';
+let currentId = '';
+
+// ---- AUTH ----
+
+async function login() {
+  const token = document.getElementById('pat-input').value.trim();
+  if (!token) return;
+  try {
+    const r = await ghFetch('/user', token);
+    if (r.login !== 'lalipos') {
+      showLoginError('Этот токен не от аккаунта lalipos');
+      return;
+    }
+    pat = token;
+    sessionStorage.setItem('pdd_pat', pat);
+    await loadDashboard();
+  } catch (e) {
+    showLoginError('Неверный токен или нет доступа к сети');
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem('pdd_pat');
+  pat = '';
+  show('login-view');
+  hide('dashboard-view');
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+// ---- GITHUB API ----
+
+async function ghFetch(path, token, opts = {}) {
+  const res = await fetch(`${BASE}${path}`, {
+    ...opts,
+    headers: {
+      Authorization: `token ${token || pat}`,
+      Accept: 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`GitHub API ${res.status}: ${path}`);
+  return res.json();
+}
+
+async function getFileSha(path) {
+  const data = await ghFetch(`/repos/${REPO}/contents/${path}?ref=${BRANCH}`);
+  return data.sha;
+}
+
+async function updateFile(path, content, message, sha) {
+  return ghFetch(`/repos/${REPO}/contents/${path}`, pat, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message,
+      content: btoa(unescape(encodeURIComponent(content))),
+      sha,
+      branch: BRANCH,
+    }),
+  });
+}
+
+// ---- DASHBOARD ----
+
+async function loadDashboard() {
+  hide('login-view');
+  show('dashboard-view');
+  document.getElementById('question-list').innerHTML = '<p class="text-gray-400 text-sm">Загрузка...</p>';
+
+  const [metaData, questionsData, hintsData, mSha, hSha] = await Promise.all([
+    fetch(`${RAW}/meta.json`).then(r => r.json()),
+    fetch(`${RAW}/questions_ab.json`).then(r => r.json()),
+    fetch(`${RAW}/hints_ab_v2.json`).then(r => r.json()),
+    getFileSha('data/meta.json'),
+    getFileSha('data/hints_ab_v2.json'),
+  ]);
+
+  meta = metaData;
+  questions = questionsData;
+  hints = hintsData;
+  metaFileSha = mSha;
+  hintsFileSha = hSha;
+
+  document.getElementById('sync-info').textContent =
+    `Версия ${meta.version} · Обновлено ${meta.updated_at.slice(0, 10)} · ${meta.stats?.total ?? questions.length} вопросов`;
+
+  renderDashboard();
+}
+
+function renderDashboard() {
+  const ids = meta.needs_review || [];
+
+  if (ids.length === 0) {
+    show('all-ok');
+    document.getElementById('question-list').innerHTML = '';
+    return;
+  }
+
+  hide('all-ok');
+  const byId = Object.fromEntries(questions.map(q => [q.id, q]));
+  const list = document.getElementById('question-list');
+
+  list.innerHTML = `<p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+    ${ids.length} вопрос(ов) изменились — нужно проверить хинты
+  </p>`;
+
+  ids.forEach(id => {
+    const q = byId[id];
+    if (!q) return;
+    const hint = hints[id] || '';
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl border border-amber-300 p-4 mb-3';
+    card.innerHTML = `
+      <p class="text-xs text-amber-600 font-semibold mb-1">${q.ticket_number} · ${q.title}</p>
+      <p class="text-sm font-medium text-gray-900 mb-2">${q.question}</p>
+      ${hint
+        ? `<p class="text-xs text-gray-500 italic mb-3">Текущий хинт: ${hint.slice(0, 120)}${hint.length > 120 ? '…' : ''}</p>`
+        : `<p class="text-xs text-red-400 mb-3">Хинта нет — нужно написать</p>`
+      }
+      <button onclick='openModal("${id}")' class="text-sm bg-black text-white rounded-lg px-4 py-1.5 hover:bg-gray-800">Редактировать</button>
+    `;
+    list.appendChild(card);
+  });
+}
+
+// ---- MODAL ----
+
+function openModal(id) {
+  currentId = id;
+  const q = questions.find(q => q.id === id);
+  if (!q) return;
+
+  document.getElementById('modal-question').textContent = q.question;
+  document.getElementById('modal-tip').textContent = q.answer_tip || '—';
+  document.getElementById('modal-hint').value = hints[id] || '';
+
+  const answersEl = document.getElementById('modal-answers');
+  answersEl.innerHTML = q.answers.map(a =>
+    `<div class="${a.is_correct ? 'text-green-700 font-medium' : 'text-gray-600'}">
+      ${a.is_correct ? '✓' : '·'} ${a.answer_text}
+    </div>`
+  ).join('');
+
+  document.getElementById('save-error').classList.add('hidden');
+  show('modal');
+}
+
+function closeModal() {
+  hide('modal');
+  currentId = '';
+}
+
+async function saveHint() {
+  const newHint = document.getElementById('modal-hint').value.trim();
+  if (!newHint) {
+    showSaveError('Хинт не может быть пустым');
+    return;
+  }
+
+  const btn = document.getElementById('save-btn');
+  btn.textContent = 'Сохраняю...';
+  btn.disabled = true;
+
+  try {
+    // Update hints
+    hints[currentId] = newHint;
+    await updateFile(
+      'data/hints_ab_v2.json',
+      JSON.stringify(hints, null, 2),
+      `hint: update for question ${currentId.slice(0, 8)}`,
+      hintsFileSha
+    );
+    // Get new SHA after commit
+    hintsFileSha = await getFileSha('data/hints_ab_v2.json');
+
+    // Remove from needs_review
+    await removeFromNeedsReview(currentId);
+
+    closeModal();
+    renderDashboard();
+  } catch (e) {
+    showSaveError('Ошибка сохранения: ' + e.message);
+  } finally {
+    btn.textContent = 'Сохранить';
+    btn.disabled = false;
+  }
+}
+
+async function markOk() {
+  // Remove from needs_review without changing hint
+  try {
+    await removeFromNeedsReview(currentId);
+    closeModal();
+    renderDashboard();
+  } catch (e) {
+    showSaveError('Ошибка: ' + e.message);
+  }
+}
+
+async function removeFromNeedsReview(id) {
+  meta.needs_review = (meta.needs_review || []).filter(i => i !== id);
+  meta.version += 1;
+  meta.updated_at = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+
+  await updateFile(
+    'data/meta.json',
+    JSON.stringify(meta, null, 2),
+    `meta: mark ${id.slice(0, 8)} as reviewed`,
+    metaFileSha
+  );
+  metaFileSha = await getFileSha('data/meta.json');
+}
+
+function showSaveError(msg) {
+  const el = document.getElementById('save-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+// ---- UTILS ----
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+// Auto-login if token in session
+window.addEventListener('load', async () => {
+  const saved = sessionStorage.getItem('pdd_pat');
+  if (saved) {
+    document.getElementById('pat-input').value = saved;
+    try {
+      const r = await ghFetch('/user', saved);
+      if (r.login === 'lalipos') {
+        pat = saved;
+        await loadDashboard();
+        return;
+      }
+    } catch {}
+  }
+  show('login-view');
+});
+
+document.getElementById('pat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
+});
+</script>
+</body>
+</html>
