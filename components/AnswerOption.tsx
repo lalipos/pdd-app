@@ -65,6 +65,7 @@ export default function AnswerOption({ answer, allAnswers, selected, revealed, o
 const styles = StyleSheet.create({
   container: {
     borderWidth: 1,
+    borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: 10,

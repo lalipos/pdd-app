@@ -179,7 +179,13 @@ export default function Session({ questions, category, mode, ticketNumber, onNav
           {isRevealed && hint && (
             <View style={styles.hintBox}>
               <Text style={styles.hintLabel}>🧠 Как запомнить</Text>
-              <Text style={styles.hintText}>{hint}</Text>
+              <Text style={styles.hintText}>
+                {hint.split(/(\*\*[^*]+\*\*)/).map((part, idx) =>
+                  part.startsWith('**') && part.endsWith('**')
+                    ? <Text key={idx} style={{ fontWeight: 'bold' }}>{part.slice(2, -2)}</Text>
+                    : part
+                )}
+              </Text>
             </View>
           )}
         </ScrollView>
@@ -348,6 +354,7 @@ const styles = StyleSheet.create({
   hintBox: {
     marginTop: 14,
     backgroundColor: '#FFF7ED',
+    borderRadius: 12,
     borderLeftWidth: 3,
     borderLeftColor: '#F59E0B',
     paddingVertical: 12,
@@ -364,6 +371,7 @@ const styles = StyleSheet.create({
   nextBtn: {
     borderWidth: 1,
     borderColor: '#1a1a1a',
+    borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
@@ -376,6 +384,7 @@ const styles = StyleSheet.create({
     marginTop: 40,
     borderWidth: 1,
     borderColor: '#1a1a1a',
+    borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 40,
   },

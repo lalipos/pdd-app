@@ -80,6 +80,7 @@ const styles = StyleSheet.create({
   btn: {
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    borderRadius: 12,
     paddingVertical: 24,
     paddingHorizontal: 20,
     marginBottom: 12,
@@ -87,6 +88,7 @@ const styles = StyleSheet.create({
   btnAccent: {
     borderWidth: 1.5,
     borderColor: '#1a1a1a',
+    borderRadius: 12,
     backgroundColor: '#f7f7f7',
     paddingVertical: 24,
     paddingHorizontal: 20,

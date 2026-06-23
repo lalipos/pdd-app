@@ -1,10 +1,16 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView, Dimensions } from 'react-native';
 import { Screen } from '../types';
 
 interface Props {
   onNavigate: (screen: Screen) => void;
 }
+
+const COLS = 4;
+const PAD = 16;
+const GAP = 10;
+const CELL_W = Math.floor((Dimensions.get('window').width - PAD * 2 - GAP * (COLS - 1)) / COLS);
+const CELL_H = Math.round(CELL_W * 0.72); // прямоугольная: шире, чем выше
 
 export default function TicketList({ onNavigate }: Props) {
   const tickets = Array.from({ length: 40 }, (_, i) => i + 1);
@@ -42,33 +48,28 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 16,
   },
-  back: {
-    fontSize: 16,
-    color: '#2563EB',
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
+  back: { fontSize: 16, color: '#2563EB' },
+  title: { fontSize: 18, fontWeight: '600', color: '#1a1a1a' },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 16,
+    paddingHorizontal: PAD,
     paddingTop: 8,
-    gap: 10,
+    gap: GAP,
   },
   cell: {
-    width: '22%',
-    aspectRatio: 1,
+    width: CELL_W,
+    height: CELL_H,
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cellText: {
-    fontSize: 18,
-    fontWeight: '500',
+    fontSize: 24,
+    fontWeight: '600',
     color: '#1a1a1a',
+    includeFontPadding: false,
   },
 });
